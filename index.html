@@ -82,7 +82,7 @@
 
 <body>
     <h1>Geospatial Visualizations</h1>
-    <h3>Created by [Your Name]</h3>
+    <h3>Created by Sudhamsh Kamisetty </h3>
     <div class="container">
         <div id="mapA" class="map"></div>
         <div id="legendA" class="legend"></div>
@@ -110,11 +110,11 @@
         ]).then(([topoData, giniData]) => {
             const towns = topojson.feature(topoData, topoData.objects.ma).features;
 
-            // Prepare scales for each map
+            
             const population1980Scale = d3.scaleSequential(d3.interpolateBlues)
                 .domain(d3.extent(towns, d => d.properties.POP1980));
 
-            // Updated population change scale with new vibrant color scheme
+            
             const populationChangeScale = d3.scaleDiverging(d3.interpolateBrBG)
                 .domain([d3.min(towns, d => d.properties.POP2010 - d.properties.POP1980), 0, d3.max(towns, d => d.properties.POP2010 - d.properties.POP1980)]);
 
@@ -124,7 +124,7 @@
             const projection = d3.geoMercator().fitSize([width, height], { type: "FeatureCollection", features: towns });
             const path = d3.geoPath().projection(projection);
 
-            // Function to add a legend
+           
             function addLegend(containerId, scale, title) {
                 const legend = d3.select(containerId).append("svg")
                     .attr("width", 300)
@@ -297,13 +297,13 @@
                         chart.append("g")
                             .call(d3.axisLeft(yScale).ticks(5));
 
-                        // Define the line generator
+                        
                         const line = d3.line()
                             .x((d, i) => xScale(years[i]))
                             .y(d => yScale(d))
                             .curve(d3.curveMonotoneX);
 
-                        // Draw the line
+                        
                         chart.append("path")
                             .datum(giniValues)
                             .attr("fill", "none")
@@ -311,7 +311,7 @@
                             .attr("stroke-width", 2)
                             .attr("d", line);
 
-                        // Add circles for each data point
+                        
                         chart.selectAll("circle")
                             .data(giniValues)
                             .enter().append("circle")
