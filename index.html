@@ -105,8 +105,8 @@
 
         // Load data files
         Promise.all([
-            d3.json("towns.topojson"),
-            d3.csv("gini_index.csv")
+            d3.json("./towns.topojson"),
+            d3.csv("./gini_index.csv")
         ]).then(([topoData, giniData]) => {
             const towns = topojson.feature(topoData, topoData.objects.ma).features;
 
