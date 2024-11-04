@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Geospatial Visualizations</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f9f9f9;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1, h3 {
+            text-align: center;
+            color: #333;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            max-width: 800px;
+        }
+
+        .map {
+            margin: 10px 0;
+            border: 1px solid #ccc;
+        }
+
+        .tooltip, .gini-history {
+            position: absolute;
+            background-color: #fff;
+            padding: 8px;
+            border: 1px solid #333;
+            border-radius: 4px;
+            box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.2);
+            pointer-events: none;
+            visibility: hidden;
+        }
+
+        .gini-history {
+            display: flex;
+            gap: 10px;
+            width: 600px;
+            font-size: 0.9em;
+        }
+
+        .chart-container {
+            width: 350px;
+            height: 200px;
+        }
+
+        .gini-table-container {
+            width: 200px;
+        }
+
+        .gini-table {
+            width: 100%;
+            font-size: 0.8em;
+            border-collapse: collapse;
+        }
+
+        .gini-table th, .gini-table td {
+            border: 1px solid #333;
+            padding: 4px;
+            text-align: right;
+        }
+
+        .legend {
+            font-size: 0.8em;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Geospatial Visualizations</h1>
+    <h3>Created by [Your Name]</h3>
+    <div class="container">
+        <div id="mapA" class="map"></div>
+        <div id="legendA" class="legend"></div>
+
+        <div id="mapB" class="map"></div>
+        <div id="legendB" class="legend"></div>
+
+        <div id="mapC" class="map"></div>
+        <div id="legendC" class="legend"></div>
+    </div>
+    <div id="tooltip" class="tooltip"></div>
+    <div id="gini-history" class="gini-history"></div>
+
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://d3js.org/topojson.v1.min.js"></script>
+    <script>
+        const width = 700, height = 500;
+        const tooltip = d3.select("#tooltip");
+        const giniHistory = d3.select("#gini-history");
+
+        // Load data files
+        Promise.all([
+            d3.json("data/towns.topojson"),
+            d3.csv("data/gini_index.csv")
+        ]).then(([topoData, giniData]) => {
+            const towns = topojson.feature(topoData, topoData.objects.ma).features;
+
+            // Prepare scales for each map
+            const population1980Scale = d3.scaleSequential(d3.interpolateBlues)
+                .domain(d3.extent(towns, d => d.properties.POP1980));
+
+            // Updated population change scale with new vibrant color scheme
+            const populationChangeScale = d3.scaleDiverging(d3.interpolateBrBG)
+                .domain([d3.min(towns, d => d.properties.POP2010 - d.properties.POP1980), 0, d3.max(towns, d => d.properties.POP2010 - d.properties.POP1980)]);
+
+            const giniScale = d3.scaleSequential(d3.interpolateRdYlGn)
+                .domain([0.5, 0.3]);
+
+            const projection = d3.geoMercator().fitSize([width, height], { type: "FeatureCollection", features: towns });
+            const path = d3.geoPath().projection(projection);
+
+            // Function to add a legend
+            function addLegend(containerId, scale, title) {
+                const legend = d3.select(containerId).append("svg")
+                    .attr("width", 300)
+                    .attr("height", 60);
+
+                legend.append("text")
+                    .attr("x", 10)
+                    .attr("y", 15)
+                    .text(title)
+                    .attr("font-size", "12px")
+                    .attr("font-weight", "bold");
+
+                const gradientId = `${containerId}-gradient`;
+
+                const defs = legend.append("defs");
+                const linearGradient = defs.append("linearGradient")
+                    .attr("id", gradientId);
+
+                linearGradient.selectAll("stop")
+                    .data(d3.ticks(0, 1, 10))
+                    .enter().append("stop")
+                    .attr("offset", d => `${d * 100}%`)
+                    .attr("stop-color", d => scale(scale.domain()[0] + d * (scale.domain()[1] - scale.domain()[0])));
+
+                legend.append("rect")
+                    .attr("x", 10)
+                    .attr("y", 20)
+                    .attr("width", 260)
+                    .attr("height", 20)
+                    .style("fill", `url(#${gradientId})`);
+
+                const axisScale = d3.scaleLinear()
+                    .domain(scale.domain())
+                    .range([0, 260]);
+
+                const legendAxis = d3.axisBottom(axisScale)
+                    .ticks(5);
+
+                legend.append("g")
+                    .attr("transform", "translate(10, 40)")
+                    .call(legendAxis);
+            }
+
+            // Generate Map A: Population in 1980
+            const mapA = d3.select("#mapA").append("svg")
+                .attr("width", width)
+                .attr("height", height);
+
+            mapA.selectAll("path")
+                .data(towns)
+                .enter().append("path")
+                .attr("d", path)
+                .attr("fill", d => population1980Scale(d.properties.POP1980))
+                .attr("stroke", "#333")
+                .on("mouseenter", function (event, d) {
+                    tooltip.style("visibility", "visible")
+                        .html(`Town: ${d.properties.TOWN}<br>Population (1980): ${d.properties.POP1980}`)
+                        .style("top", (event.pageY + 5) + "px")
+                        .style("left", (event.pageX + 5) + "px");
+                    d3.select(this).attr("stroke", "#111").raise();
+                })
+                .on("mousemove", function (event) {
+                    tooltip.style("top", (event.pageY + 5) + "px")
+                        .style("left", (event.pageX + 5) + "px");
+                })
+                .on("mouseleave", function () {
+                    tooltip.style("visibility", "hidden");
+                    d3.select(this).attr("stroke", "#333");
+                });
+
+            addLegend("#legendA", population1980Scale, "Population in 1980");
+
+            // Generate Map B: Population Change (1980-2010) with updated color scheme
+            const mapB = d3.select("#mapB").append("svg")
+                .attr("width", width)
+                .attr("height", height);
+
+            mapB.selectAll("path")
+                .data(towns)
+                .enter().append("path")
+                .attr("d", path)
+                .attr("fill", d => populationChangeScale(d.properties.POP2010 - d.properties.POP1980))
+                .attr("stroke", "#333")
+                .on("mouseenter", function (event, d) {
+                    const populationChange = d.properties.POP2010 - d.properties.POP1980;
+                    tooltip.style("visibility", "visible")
+                        .html(`Town: ${d.properties.TOWN}<br>Population Change (1980-2010): ${populationChange}`)
+                        .style("top", (event.pageY + 5) + "px")
+                        .style("left", (event.pageX + 5) + "px");
+                    d3.select(this).attr("stroke", "#111").raise();
+                })
+                .on("mousemove", function (event) {
+                    tooltip.style("top", (event.pageY + 5) + "px")
+                        .style("left", (event.pageX + 5) + "px");
+                })
+                .on("mouseleave", function () {
+                    tooltip.style("visibility", "hidden");
+                    d3.select(this).attr("stroke", "#333");
+                });
+
+            addLegend("#legendB", populationChangeScale, "Population Change (1980-2010)");
+
+            // Generate Map C: Gini Index with Gini history
+            const mapC = d3.select("#mapC").append("svg")
+                .attr("width", width)
+                .attr("height", height);
+
+            mapC.selectAll("path")
+                .data(towns)
+                .enter().append("path")
+                .attr("d", path)
+                .attr("fill", d => {
+                    const gini = giniData.find(g => g.id === `0500000US${d.properties.FIPS_STCO}`);
+                    return gini ? giniScale(+gini["Estimate!!Gini Index"]) : "#ccc";
+                })
+                .attr("stroke", "#333")
+                .on("mouseenter", function (event, d) {
+                    const countyId = `0500000US${d.properties.FIPS_STCO}`;
+                    const giniHistoryData = giniData.filter(g => g.id === countyId);
+
+                    if (giniHistoryData.length > 0) {
+                        giniHistory.html("");
+
+                        const tableContainer = giniHistory.append("div")
+                            .attr("class", "gini-table-container")
+                            .append("table")
+                            .attr("class", "gini-table");
+
+                        tableContainer.append("thead").append("tr")
+                            .selectAll("th")
+                            .data(["Year", "Gini Index"])
+                            .enter().append("th")
+                            .text(d => d);
+
+                        const tbody = tableContainer.append("tbody");
+                        giniHistoryData.forEach(g => {
+                            const row = tbody.append("tr");
+                            row.append("td").text(g.year);
+                            row.append("td").text(g["Estimate!!Gini Index"]);
+                        });
+
+                        const chartContainer = giniHistory.append("div")
+                            .attr("class", "chart-container");
+
+                        const chart = chartContainer.append("svg")
+                            .attr("width", 350)
+                            .attr("height", 150)
+                            .append("g")
+                            .attr("transform", "translate(40,20)");
+
+                        const years = giniHistoryData.map(g => +g.year);
+                        const giniValues = giniHistoryData.map(g => +g["Estimate!!Gini Index"]);
+
+                        const xScale = d3.scaleLinear()
+                            .domain(d3.extent(years))
+                            .range([0, 260]);
+
+                        const yScale = d3.scaleLinear()
+                            .domain([0.3, 0.5])
+                            .range([100, 0]);
+
+                        // Add x and y axes
+                        chart.append("g")
+                            .attr("transform", "translate(0,100)")
+                            .call(d3.axisBottom(xScale).tickFormat(d3.format("d")))
+                            .selectAll("text")
+                            .attr("transform", "rotate(-45)")
+                            .style("text-anchor", "end");
+
+                        chart.append("g")
+                            .call(d3.axisLeft(yScale).ticks(5));
+
+                        // Define the line generator
+                        const line = d3.line()
+                            .x((d, i) => xScale(years[i]))
+                            .y(d => yScale(d))
+                            .curve(d3.curveMonotoneX);
+
+                        // Draw the line
+                        chart.append("path")
+                            .datum(giniValues)
+                            .attr("fill", "none")
+                            .attr("stroke", "steelblue")
+                            .attr("stroke-width", 2)
+                            .attr("d", line);
+
+                        // Add circles for each data point
+                        chart.selectAll("circle")
+                            .data(giniValues)
+                            .enter().append("circle")
+                            .attr("cx", (d, i) => xScale(years[i]))
+                            .attr("cy", d => yScale(d))
+                            .attr("r", 3)
+                            .attr("fill", "steelblue");
+                    } else {
+                        giniHistory.style("visibility", "hidden");
+                    }
+
+                    d3.select(this).attr("stroke", "#111").raise();
+                })
+                .on("mousemove", function (event) {
+                    giniHistory.style("visibility", "visible")
+                        .style("top", (event.pageY + 15) + "px")
+                        .style("left", (event.pageX + 15) + "px");
+                })
+                .on("mouseleave", function () {
+                    giniHistory.style("visibility", "hidden");
+                    d3.select(this).attr("stroke", "#333");
+                });
+
+            addLegend("#legendC", giniScale, "Gini Index (2019)");
+
+        }).catch(error => {
+            console.error("Error loading files:", error);
+        });
+    </script>
+</body>
+
+</html>
+
+
+
+
+
+
